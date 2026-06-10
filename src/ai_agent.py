@@ -71,6 +71,12 @@ def _extract_limit(text):
 class SalesAIAgent:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            try:
+                import streamlit as st
+                self.api_key = st.secrets.get("GEMINI_API_KEY")
+            except Exception:
+                pass
         self.initialized = False
 
         if genai and self.api_key and self.api_key.strip():
