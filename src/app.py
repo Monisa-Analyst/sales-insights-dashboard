@@ -15,6 +15,25 @@ st.set_page_config(page_title="Sales Analytics", page_icon="🛒", layout="wide"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data", "sales.db")
 
+# Auto-build database if not found (useful for first-time runs and cloud deployment)
+if not os.path.exists(DB):
+    st.info("Database not found. Running the data loader to build the database now...")
+    with st.spinner("Downloading and parsing e-commerce sales records... This might take a few seconds."):
+        try:
+            import sys
+            sys.path.append(ROOT)
+            sys.path.append(os.path.join(ROOT, "src"))
+            import data_loader
+            data_loader.setup_folders()
+            data_loader.grab_dataset()
+            data_loader.build_tables()
+            st.success("Database created successfully! Refreshing dashboard...")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to automatically build the database: {e}")
+            st.warning("Please try running `python src/data_loader.py` manually in your terminal.")
+            st.stop()
+
 
 def apply_styles():
     st.markdown("""<style>
@@ -188,10 +207,6 @@ if page == "📊 Dashboard":
         <h1>Sales Overview</h1>
         <p>Key metrics and trends from your e-commerce data</p>
     </div>""", unsafe_allow_html=True)
-
-    if not os.path.exists(DB):
-        st.warning("Database not found. Run `python src/data_loader.py` first.")
-        st.stop()
 
     # filters
     yrs, mkts, segs = get_filters()
