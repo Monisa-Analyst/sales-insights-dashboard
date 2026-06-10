@@ -1,6 +1,6 @@
 # Sales Analytics Dashboard
 
-👉 **[Launch Live Web Application](https://share.streamlit.io/monisa-analyst/sales-insights-dashboard/main/src/app.py)**
+👉 **[Web Application](https://share.streamlit.io/monisa-analyst/sales-insights-dashboard/main/src/app.py)**
 
 An interactive sales analytics dashboard built with Streamlit that lets you explore e-commerce sales data through visualizations and ask questions in plain English using Google's Gemini API.
 
