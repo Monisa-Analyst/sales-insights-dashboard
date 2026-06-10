@@ -1,19 +1,21 @@
-# Local database files
+# database files
 data/raw_sales_data.csv
 data/sales.db
+data/cleaned_*.csv
 
-# Cleaned data files (optional, but keep them for Power BI demonstration)
-# data/cleaned_*.csv
-
-# Environment credentials
+# env secrets
 .env
 
-# Python caching
+# python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 
-# Streamlit config
+# streamlit
 .streamlit/
+
+# os junk
+Thumbs.db
+.DS_Store
