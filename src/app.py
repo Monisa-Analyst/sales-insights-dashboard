@@ -197,6 +197,12 @@ st.sidebar.markdown("---")
 page = st.sidebar.radio("", ["📊 Dashboard", "🤖 Ask AI"], label_visibility="collapsed")
 st.sidebar.markdown("---")
 
+st.sidebar.markdown("### 🔗 Portfolio Links")
+st.sidebar.markdown("- 🐙 [GitHub Profile](https://github.com/Monisa-Analyst)")
+st.sidebar.markdown("- 🛡️ [Sentinel SOC Triage Platform](https://share.streamlit.io/monisa-analyst/ai-soc-analyst/main/app.py)")
+st.sidebar.markdown("- 💼 [LinkedIn Profile](https://www.linkedin.com/in/monisa-l-333546366)")
+st.sidebar.markdown("---")
+
 
 # ===========================
 #  DASHBOARD
