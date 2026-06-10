@@ -188,7 +188,7 @@ def get_filters():
     return yrs, mkts, segs
 
 
-# ---- setup ----
+# --- Load Styling and Routing Setup ---
 apply_styles()
 
 st.sidebar.markdown("## 🛒 Sales Analytics")
@@ -204,9 +204,7 @@ st.sidebar.markdown("- 💼 [LinkedIn Profile](https://www.linkedin.com/in/monis
 st.sidebar.markdown("---")
 
 
-# ===========================
-#  DASHBOARD
-# ===========================
+# --- Page 1: Dashboard View ---
 if page == "📊 Dashboard":
 
     st.markdown("""<div class="top-banner">
@@ -423,9 +421,7 @@ if page == "📊 Dashboard":
             st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ===========================
-#  ASK AI
-# ===========================
+# --- Page 2: AI Query Assistant ---
 elif page == "🤖 Ask AI":
 
     st.markdown("""<div class="top-banner">
