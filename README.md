@@ -230,7 +230,7 @@ python src/data_loader.py
 Copy the `.env.example` file to `.env` and fill in your Gemini API key:
 
 ```env
-GEMINI_API_KEY=your_actual_gemini_api_key_here
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 > **Note**: If `GEMINI_API_KEY` is not provided, the Streamlit AI Query Assistant will run in an offline **Simulation Mode** using pre-configured mock questions to showcase features.
@@ -262,32 +262,3 @@ The normalized files saved in the `data/` folder are formatted and ready for imp
 Below is the visual mockup of the completed Power BI Dashboard:
 
 ![Power BI Sales Dashboard Mockup](power_bi/mockups/sales_dashboard_mockup.png)
-
----
-
-## 👥 GitHub Upload Instructions
-
-To upload this project to your GitHub repository:
-1. Initialize a git repository locally:
-   ```bash
-   git init
-   ```
-2. Create a `.gitignore` to avoid committing large raw database files and keys:
-   ```bash
-   echo "data/raw_sales_data.csv" >> .gitignore
-   echo "data/sales.db" >> .gitignore
-   echo ".env" >> .gitignore
-   echo "__pycache__/" >> .gitignore
-   echo ".streamlit/" >> .gitignore
-   ```
-3. Stage and commit files:
-   ```bash
-   git add .
-   git commit -m "Initial commit: AI-Powered Sales Analytics Assistant"
-   ```
-4. Push to your remote repository:
-   ```bash
-   git remote add origin https://github.com/yourusername/ai-powered-sales-analytics-assistant.git
-   git branch -M main
-   git push -u origin main
-   ```
