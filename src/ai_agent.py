@@ -2,7 +2,7 @@ import os
 import sqlite3
 import pandas as pd
 from dotenv import load_dotenv
-import google.generativeai as genai
+import anthropic
 
 # Load environment variables
 load_dotenv()
@@ -69,18 +69,18 @@ Date Querying Rules for SQLite:
 class SalesAIAgent:
     def __init__(self):
         # Retrieve the API key from environment variables
-        self.api_key = os.getenv("GEMINI_API_KEY")
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.initialized = False
         
-        if self.api_key and self.api_key.strip():
+        if self.api_key and self.api_key.strip() and not self.api_key.startswith("YOUR_"):
             try:
-                genai.configure(api_key=self.api_key)
+                self.client = anthropic.Anthropic(api_key=self.api_key)
                 self.initialized = True
-                print("[+] Gemini API client configured successfully.")
+                print("[+] Anthropic Claude API client configured successfully.")
             except Exception as e:
-                print(f"[-] Failed to configure Gemini API client: {e}")
+                print(f"[-] Failed to configure Anthropic Claude API client: {e}")
         else:
-            print("[-] GEMINI_API_KEY not found in environment. AI queries will operate in simulation/mock mode.")
+            print("[-] ANTHROPIC_API_KEY not found or default placeholder. AI queries will operate in simulation/mock mode.")
 
     def _clean_sql_query(self, raw_sql):
         """Remove markdown syntax wrapper (```sql ... ```) if returned by LLM."""
@@ -102,7 +102,7 @@ class SalesAIAgent:
         return sql
 
     def translate_to_sql(self, question):
-        """Generate SQL query from natural language question using Gemini API."""
+        """Generate SQL query from natural language question using Claude API."""
         if not self.initialized:
             return self._mock_sql_generator(question)
             
@@ -118,15 +118,18 @@ class SalesAIAgent:
         )
         
         try:
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                system_instruction=system_instruction
+            message = self.client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1000,
+                system=system_instruction,
+                messages=[
+                    {"role": "user", "content": f"Question: {question}"}
+                ]
             )
-            response = model.generate_content(f"Question: {question}")
-            sql_query = self._clean_sql_query(response.text)
+            sql_query = self._clean_sql_query(message.content[0].text)
             return sql_query
         except Exception as e:
-            print(f"[-] Gemini API SQL generation failed: {e}. Falling back to simulation.")
+            print(f"[-] Claude API SQL generation failed: {e}. Falling back to simulation.")
             return self._mock_sql_generator(question)
 
     def execute_query(self, sql_query):
@@ -143,7 +146,7 @@ class SalesAIAgent:
             return None, str(e)
 
     def generate_explanation(self, question, sql_query, result_df):
-        """Generate a natural language explanation of the query results using Gemini."""
+        """Generate a natural language explanation of the query results using Claude."""
         if not self.initialized:
             return self._mock_explanation_generator(question, result_df)
             
@@ -162,15 +165,20 @@ class SalesAIAgent:
         )
         
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt)
-            return response.text.strip()
+            message = self.client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return message.content[0].text.strip()
         except Exception as e:
-            print(f"[-] Gemini API explanation failed: {e}. Returning default summary.")
+            print(f"[-] Claude API explanation failed: {e}. Returning default summary.")
             return self._mock_explanation_generator(question, result_df)
 
     def _mock_sql_generator(self, question):
-        """Fallback mock generator if Gemini API key is missing."""
+        """Fallback mock generator if Claude API key is missing."""
         q_lower = question.lower()
         if "top 5 customers" in q_lower or "best customers" in q_lower:
             return (
@@ -211,7 +219,7 @@ class SalesAIAgent:
             )
 
     def _mock_explanation_generator(self, question, result_df):
-        """Fallback mock explanation generator if Gemini API key is missing."""
+        """Fallback mock explanation generator if Claude API key is missing."""
         if result_df is None or result_df.empty:
             return "No data was returned."
             
@@ -228,6 +236,6 @@ class SalesAIAgent:
             summary += row_desc + "\n"
             
         summary += (
-            f"\n*Note: To enable active AI reflections and summaries, configure your `GEMINI_API_KEY` in the `.env` file.*"
+            f"\n*Note: To enable active AI reflections and summaries, configure your `ANTHROPIC_API_KEY` in the `.env` file.*"
         )
         return summary

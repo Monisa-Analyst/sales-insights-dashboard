@@ -42,7 +42,7 @@ A major feature of this platform is the **live data ingestion pipeline**: users 
 - Runs real-time integrity checks across the production database (detecting orphan records, null entries, and date boundaries).
 
 ### 6. AI SQL Query Assistant (`src/ai_agent.py`)
-- Translates natural language business questions into SQLite syntax using the Gemini API.
+- Translates natural language business questions into SQLite syntax using the Claude API.
 - Explains tabular results in business-friendly analyst summaries.
 - **Simulation Fallback:** Falls back to a regex keyword parser to map queries when no API key is present.
 
@@ -55,7 +55,7 @@ A major feature of this platform is the **live data ingestion pipeline**: users 
 | **Frontend & UI** | Streamlit (Clean Light-Theme Layout) |
 | **Data Visualization** | Plotly Express & Graph Objects |
 | **Database** | SQLite (SQLAlchemy + sqlite3) |
-| **AI / NLP** | Google Gemini API (`gemini-1.5-flash`) |
+| **AI / NLP** | Google Claude API (`gemini-1.5-flash`) |
 | **Data Pipeline** | Python 3.11+, Pandas, NumPy |
 | **File Support** | CSV, Excel (openpyxl) |
 
@@ -217,7 +217,7 @@ python src/data_loader.py
 ### 3. Configure API Credentials (Optional)
 Create a `.env` file in the root directory:
 ```env
-GEMINI_API_KEY=your_gemini_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
 ```
 
 ### 4. Run Automated System Tests

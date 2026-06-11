@@ -977,9 +977,9 @@ elif page == "🤖 Ask AI":
     </div>""", unsafe_allow_html=True)
 
     if agent.initialized:
-        st.success("✅ Gemini AI connected — ask any question about your sales data.")
+        st.success("✅ Claude AI connected — ask any question about your sales data.")
     else:
-        st.info("Running in **demo mode** — add your GEMINI_API_KEY to `.env` for full AI.")
+        st.info("Running in **demo mode** — add your ANTHROPIC_API_KEY to `.env` for full AI.")
 
     st.markdown("""<div class="query-box">
         <h3>Try one of these</h3>
