@@ -55,7 +55,7 @@ A major feature of this platform is the **live data ingestion pipeline**: users 
 | **Frontend & UI** | Streamlit (Clean Light-Theme Layout) |
 | **Data Visualization** | Plotly Express & Graph Objects |
 | **Database** | SQLite (SQLAlchemy + sqlite3) |
-| **AI / NLP** | Google Claude API (`gemini-1.5-flash`) |
+| **AI / NLP** | Anthropic Claude API (`claude-3-5-sonnet-20241022`) |
 | **Data Pipeline** | Python 3.11+, Pandas, NumPy |
 | **File Support** | CSV, Excel (openpyxl) |
 
