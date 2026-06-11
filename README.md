@@ -1,114 +1,96 @@
-# AI-Powered Sales Analytics Assistant
+# Sales Insights & AI Query Assistant
 
-A complete end-to-end Business Intelligence (BI) and AI analytics application. This project cleans and normalizes a high-volume sales dataset (~50,000+ records), loads it into a relational database, performs advanced SQL calculations (CTEs, Joins, Window Functions), outlines a Power BI data model, and runs a **Streamlit Web Application** featuring an **AI Query Assistant** that translates natural language questions into database-executable SQL using the **Gemini API**.
-
----
-
-## 🚀 Key Features
-
-*   **Data Engineering**: Programmatically downloads and cleans the Global Superstore sales dataset (combining and standardizing dates, numeric strings, and handling missing items) and normalizes it from a flat CSV format into a normalized star schema (`customers`, `products`, `locations`, `orders`, and `order_items`).
-*   **Relational Database**: Populates a local SQLite database with relational indexes for fast execution, and provides production-ready schema scripts compatible with PostgreSQL and MySQL.
-*   **Advanced Analytical SQL**: Implements business queries using SQL Joins, Common Table Expressions (CTEs), and Window Functions (calculating MoM growth, category rankings, quarterly purchase retention cohorts, and storefront funnel stats).
-*   **Power BI Integration**: Includes a database-to-Power BI schema relationship map, recommended DAX measures, and a custom dark-mode UI layout mockup.
-*   **Executive Streamlit App**: A modern, dark-themed dashboard showing:
-    *   Dynamic filters (Year, Market Region, Segment) that update KPIs and charts.
-    *   Interactive Plotly visual graphs (Sales/Profit MoM trends, Category breakdowns, Top Customers, Best-selling items).
-    *   **Cohorts & Funnels**: Interactive customer purchase retention cohorts heatmap and web clickstream conversion funnel chart.
-*   **AI SQL Assistant**: Integrates with the Google Gemini API to translate natural language user questions (e.g., *"Show me the top 5 customers"* or *"What were the sales in March 2014?"*) into database queries, executes them, and returns tabular data accompanied by an analyst-grade written summary.
+🌐 **[Live Web Application](https://share.streamlit.io/monisa-analyst/sales-insights-dashboard/main/src/app.py)**  
+*Explore the live Streamlit dashboard in your browser — upload your own data, get instant analysis, and ask questions in plain English.*
 
 ---
 
-## 📐 Relational Database Schema
+## Project Overview
 
-The flat dataset is normalized into the following relational structure:
+An end-to-end business intelligence (BI) and data engineering platform built around an e-commerce dataset (~50,000 transaction records). The application covers the entire analytical lifecycle: raw data ingestion and ETL normalization, quarterly cohorts and clickstream funnels, interactive dashboard reporting, database integrity monitoring, and an integrated generative AI assistant that translates conversational English questions into executable SQL queries.
 
-```mermaid
-erDiagram
-    customers {
-        varchar customer_id PK
-        varchar customer_name
-        varchar segment
-    }
-    products {
-        varchar product_id PK
-        varchar product_name
-        varchar category
-        varchar sub_category
-    }
-    locations {
-        integer location_id PK
-        varchar city
-        varchar state
-        varchar country
-        varchar postal_code
-        varchar market
-        varchar region
-    }
-    orders {
-        varchar order_id PK
-        varchar order_date
-        varchar ship_date
-        varchar ship_mode
-        varchar customer_id FK
-        integer location_id FK
-        float shipping_cost
-        varchar order_priority
-    }
-    order_items {
-        integer order_item_id PK
-        varchar order_id FK
-        varchar product_id FK
-        float sales
-        integer quantity
-        float discount
-        float profit
-    }
-
-    customers ||--o{ orders : "places"
-    locations ||--o{ orders : "shipped_to"
-    orders ||--|{ order_items : "contains"
-    products ||--o{ order_items : "ordered_in"
-```
+A major feature of this platform is the **live data ingestion pipeline**: users can upload custom sales CSV or Excel spreadsheets directly via the web interface. The system dynamically maps, cleans, and validates the upload before merging it into the production database or flagging it for administrative review.
 
 ---
 
-## 📂 Project Structure
+## Key Features
+
+### 1. Interactive Analytics Dashboard
+- **Executive KPIs:** Live-updating indicators for total revenue, net profits, profit margins, and unique customer counts.
+- **Micro-Animations:** Sleek, responsive hover states and metrics built using Streamlit and custom CSS styling.
+- **Operational Charts:** MoM revenue trends, product category distributions, top customer spending rankings, and regional contribution splits.
+
+### 2. Cohort Retention & Funnel Analysis
+- **Quarterly Purchase Retention:** Groups customers into signup cohorts and tracks customer repeat orders over subsequent quarters with interactive heatmaps.
+- **E-Commerce Conversion Funnel:** Maps storefront web traffic stages (*Session Started ➔ Product Viewed ➔ Added to Cart ➔ Checkout Initiated ➔ Completed Purchase*) to isolate dropout rates.
+
+### 3. External Data Ingestion Pipeline (`src/ingestion.py`)
+- **Fuzzy Column Mapping:** Automatically detects and aligns uploaded columns (e.g. `order_date`, `Order Date`, `Date`) to database fields.
+- **Automated Cleaning:** Standardizes mixed date formats, formats accounting negatives, and sanitizes currency strings.
+- **Star Schema Normalization:** Splits flat CSV/Excel records into relational dimension and fact structures.
+
+### 4. SQL-Based Data Quality Gate
+- Batches pass through **9 automated SQL consistency checks** (flagging negative quantities, extreme discounts, future dates, shipping anomalies, and blank identifiers).
+- Computes a **Batch Health Score (0–100%)**:
+  - **✅ Accepted (≥80%)** — Merged automatically.
+  - **⚠️ Needs Review (50–79%)** — Held for analyst intervention.
+  - **🔴 Rejected (<50%)** — Blocked to preserve database integrity.
+
+### 5. Database Health Monitoring (`src/batch_log.py`)
+- Surfaces active alerts and pending reviews.
+- Displays comprehensive submission logs and historical batch details.
+- Runs real-time integrity checks across the production database (detecting orphan records, null entries, and date boundaries).
+
+### 6. AI SQL Query Assistant (`src/ai_agent.py`)
+- Translates natural language business questions into SQLite syntax using the Gemini API.
+- Explains tabular results in business-friendly analyst summaries.
+- **Simulation Fallback:** Falls back to a regex keyword parser to map queries when no API key is present.
+
+---
+
+## Tech Stack
+
+| Layer | Tools |
+|---|---|
+| **Frontend & UI** | Streamlit (Clean Light-Theme Layout) |
+| **Data Visualization** | Plotly Express & Graph Objects |
+| **Database** | SQLite (SQLAlchemy + sqlite3) |
+| **AI / NLP** | Google Gemini API (`gemini-1.5-flash`) |
+| **Data Pipeline** | Python 3.11+, Pandas, NumPy |
+| **File Support** | CSV, Excel (openpyxl) |
+
+---
+
+## Database Design — Star Schema
 
 ```
-ai-powered-sales-analytics-assistant/
-│
-├── data/
-│   ├── raw_sales_data.csv       # Original downloaded dataset (~13MB)
-│   ├── cleaned_*.csv            # Normalized dimension/fact CSV files
-│   └── sales.db                 # Local SQLite database
-│
-├── sql/
-│   ├── schema.sql               # Production PostgreSQL/MySQL schema definitions
-│   └── queries.sql              # Core analytical business queries
-│
-├── src/
-│   ├── data_loader.py           # Ingestion, cleaning, and normalization script
-│   ├── ai_agent.py              # LLM-to-SQL agent using Gemini API
-│   ├── app.py                   # Streamlit multi-page dashboard application
-│   └── test_system.py           # Automated unit/integration tests
-│
-├── power_bi/
-│   ├── mockups/
-│   │   └── sales_dashboard_mockup.png # Dashboard visualization mockup
-│   └── data_model_guide.md      # Data model mapping and DAX calculations
-│
-├── .env.example                 # Template environment configuration
-├── requirements.txt             # Python packages
-└── README.md                    # This document
+                  ┌──────────────┐
+                  │  customers   │
+                  └──────┬───────┘
+                         │ 1:N
+ ┌──────────────┐ 1:N ┌──┴───┐ N:1 ┌──────────────┐
+ │  locations   ├─────┤orders├─────┤   products   │
+ └──────────────┘     └──┬───┘     └──────────────┘
+                         │ 1:N
+                  ┌──────┴───────┐
+                  │ order_items  │
+                  └──────────────┘
 ```
+
+| Table | Type | Columns |
+|---|---|---|
+| `customers` | Dimension | `customer_id` (PK), `customer_name`, `segment` |
+| `products` | Dimension | `product_id` (PK), `product_name`, `category`, `sub_category` |
+| `locations` | Dimension | `location_id` (PK), `country`, `market`, `region`, `state`, `city` |
+| `orders` | Dimension | `order_id` (PK), `order_date`, `ship_date`, `customer_id` (FK), `location_id` (FK) |
+| `order_items` | Fact | `order_item_id` (PK), `order_id` (FK), `product_id` (FK), `sales`, `quantity`, `profit` |
 
 ---
 
-## 💡 Advanced SQL Query Showcases
+## Advanced SQL Query Showcases
 
-### 1. Quarterly Customer Purchase Retention (CTEs & Elapsed Quarters math)
-Identifies quarterly signup cohorts and tracks customer repeat purchase retention over subsequent quarters:
-
+### 1. Quarterly Customer Purchase Retention (Cohort Analysis)
+Identifies quarterly signup cohorts and tracks repeat customer orders over subsequent quarters:
 ```sql
 WITH CustomerSignup AS (
     SELECT 
@@ -154,9 +136,8 @@ GROUP BY ce.cohort_quarter, ce.elapsed_quarters
 ORDER BY ce.cohort_quarter, ce.elapsed_quarters;
 ```
 
-### 2. Storefront Clickstream & Conversion Funnel (CTEs & Union)
-Aggregates digital shop visitors and estimates drop-off value relative to actual database purchases:
-
+### 2. Storefront Clickstream & Conversion Funnel
+Tracks digital shop traffic conversion volumes and estimates drop-off value:
 ```sql
 WITH BaseStats AS (
     SELECT 
@@ -201,64 +182,83 @@ SELECT
 FROM BaseStats;
 ```
 
+### 3. Month-over-Month Revenue Growth
+Calculates MoM sales progression and monthly metrics using window functions:
+```sql
+WITH MonthlySales AS (
+    SELECT SUBSTR(o.order_date, 1, 7) AS month,
+           SUM(oi.sales) AS total_sales
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    GROUP BY month
+)
+SELECT month,
+       total_sales,
+       LAG(total_sales, 1) OVER (ORDER BY month) AS prev_month_sales,
+       ROUND(((total_sales - LAG(total_sales, 1) OVER (ORDER BY month))
+              / LAG(total_sales, 1) OVER (ORDER BY month)) * 100, 2) AS mom_growth_pct
+FROM MonthlySales;
+```
+
 ---
 
-## 🛠️ Getting Started
+## Local Setup
 
-### Prerequisites
-
-Ensure you have Python 3.10+ and Git installed on your system.
-
-### 1. Installation
-
-Clone this repository or navigate into the project directory and install the dependencies:
-
+### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Ingest and Normalize Data
-
-Execute the data loader script to download the Global Superstore CSV, clean it, split it into relational tables, and load it into a local SQLite database:
-
+### 2. Build the Database
 ```bash
 python src/data_loader.py
 ```
 
-### 3. Set Up API Credentials
-
-Copy the `.env.example` file to `.env` and fill in your Gemini API key:
-
+### 3. Configure API Credentials (Optional)
+Create a `.env` file in the root directory:
 ```env
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
-> **Note**: If `GEMINI_API_KEY` is not provided, the Streamlit AI Query Assistant will run in an offline **Simulation Mode** using pre-configured mock questions to showcase features.
-
 ### 4. Run Automated System Tests
-
-Verify that database tables, schemas, relations, and the AI agent translation loop are functioning correctly:
-
 ```bash
 python src/test_system.py
 ```
 
-### 5. Launch the Streamlit Web App
-
-Start the dashboard web application:
-
+### 5. Launch the Dashboard
 ```bash
 streamlit run src/app.py
 ```
-
 Open `http://localhost:8501` in your browser.
 
 ---
 
-## 💻 Power BI Visualization Dashboard
+## 📂 Project Structure
 
-The normalized files saved in the `data/` folder are formatted and ready for import. Replicate the visual mapping described in the [Power BI Guide](power_bi/data_model_guide.md) to build the dashboard.
+```
+├── data/                      # Raw datasets and SQLite database
+├── sql/
+│   ├── schema.sql             # SQL schema definition (DDL)
+│   └── queries.sql            # Analytical business queries
+├── src/
+│   ├── data_loader.py         # ETL pipeline
+│   ├── ingestion.py           # Ingestion, mapping, and cleaning
+│   ├── batch_log.py           # Submission tracking and alerts
+│   ├── ai_agent.py            # Gemini query assistant
+│   ├── app.py                 # Streamlit dashboard
+│   └── test_system.py         # Automated unit and smoke tests
+├── power_bi/
+│   ├── mockups/               # Visual mockup of dashboard
+│   └── data_model_guide.md    # Power BI data model reference
+├── requirements.txt
+└── README.md
+```
 
-Below is the visual mockup of the completed Power BI Dashboard:
+---
 
-![Power BI Sales Dashboard Mockup](power_bi/mockups/sales_dashboard_mockup.png)
+## 📬 Contact & Connections
+
+- **Author:** Monisa L.
+- **Email:** [monisa.asi@gmail.com](mailto:monisa.asi@gmail.com)
+- **LinkedIn:** [linkedin.com/in/monisa-l-333546366](https://www.linkedin.com/in/monisa-l-333546366)
+- **GitHub Profile:** [github.com/Monisa-Analyst](https://github.com/Monisa-Analyst)
