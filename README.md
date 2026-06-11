@@ -244,7 +244,7 @@ Open `http://localhost:8501` in your browser.
 │   ├── data_loader.py         # ETL pipeline
 │   ├── ingestion.py           # Ingestion, mapping, and cleaning
 │   ├── batch_log.py           # Submission tracking and alerts
-│   ├── ai_agent.py            # Gemini query assistant
+│   ├── ai_agent.py            # Claude query assistant
 │   ├── app.py                 # Streamlit dashboard
 │   └── test_system.py         # Automated unit and smoke tests
 ├── power_bi/
