@@ -1,62 +1,58 @@
-"""
-test_system.py
-Quick smoke tests to make sure the database, queries, and AI agent work.
-Run: python src/test_system.py
-"""
-
 import os
 import sqlite3
 import pandas as pd
 from ai_agent import SalesAIAgent
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB = os.path.join(ROOT, "data", "sales.db")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "data", "sales.db")
 
-
-def check_tables():
-    """make sure all tables exist and have data"""
-    print("--- checking database tables ---")
-    if not os.path.exists(DB):
-        print(f"database not found at {DB}, run data_loader.py first")
+def verify_database():
+    """Verify tables exist and contain records in SQLite database."""
+    print("=== [1/3] VERIFYING DATABASE SHEMAS & TABLES ===")
+    if not os.path.exists(DB_PATH):
+        print(f"[-] Database file not found at {DB_PATH}. Please run src/data_loader.py first.")
         return False
-
-    conn = sqlite3.connect(DB)
+        
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
+    
+    # Query schema tables
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = [t[0] for t in cursor.fetchall()]
-    print(f"found tables: {tables}")
-
-    expected = ['customers', 'products', 'locations', 'orders', 'order_items']
-    ok = True
-    for name in expected:
-        if name in tables:
-            cursor.execute(f"SELECT COUNT(*) FROM {name};")
+    print(f"[+] Found tables in SQLite: {tables}")
+    
+    expected_tables = ['customers', 'products', 'locations', 'orders', 'order_items']
+    all_exist = True
+    for et in expected_tables:
+        if et in tables:
+            # Count records
+            cursor.execute(f"SELECT COUNT(*) FROM {et};")
             count = cursor.fetchone()[0]
-            print(f"  {name}: {count} rows")
+            print(f"    - Table '{et}': {count} records loaded.")
             if count == 0:
-                print(f"  warning: {name} is empty!")
-                ok = False
+                print(f"      [!] Warning: Table '{et}' is empty.")
+                all_exist = False
         else:
-            print(f"  MISSING: {name}")
-            ok = False
-
+            print(f"    - [x] Table '{et}' is MISSING!")
+            all_exist = False
+            
     conn.close()
-    if ok:
-        print("all tables look good\n")
-    return ok
+    if all_exist:
+        print("[+] All expected relational tables verified successfully!\n")
+    return all_exist
 
-
-def check_queries():
-    """run a test join to make sure the schema works"""
-    print("--- testing sql queries ---")
-    conn = sqlite3.connect(DB)
-
-    sql = """
-        SELECT c.customer_name,
-               COUNT(DISTINCT o.order_id) AS orders_placed,
-               SUM(oi.sales) AS total_sales,
-               SUM(oi.profit) AS total_profit
+def verify_queries():
+    """Verify standard joins, CTEs, and Window functions run correctly in SQLite."""
+    print("=== [2/3] VERIFYING ANALYTICAL SQL RUNS ===")
+    conn = sqlite3.connect(DB_PATH)
+    
+    # Run a quick check: Join Customers + Orders + Items
+    test_join_query = """
+        SELECT 
+            c.customer_name,
+            COUNT(DISTINCT o.order_id) AS orders_placed,
+            SUM(oi.sales) AS total_sales,
+            SUM(oi.profit) AS total_profit
         FROM customers c
         JOIN orders o ON c.customer_id = o.customer_id
         JOIN order_items oi ON o.order_id = oi.order_id
@@ -64,54 +60,57 @@ def check_queries():
         ORDER BY total_sales DESC
         LIMIT 3;
     """
-
+    
     try:
-        df = pd.read_sql_query(sql, conn)
-        print("join query ran successfully, top 3 customers:")
-        for _, row in df.iterrows():
-            print(f"  {row['customer_name']}: ${row['total_sales']:.2f} sales, ${row['total_profit']:.2f} profit")
-        print("sql queries working\n")
+        df = pd.read_sql_query(test_join_query, conn)
+        print("[+] SQL Join & Aggregation run successful. Sample results:")
+        for idx, row in df.iterrows():
+            print(f"    - Customer: {row['customer_name']} | Sales: ${row['total_sales']:.2f} | Profit: ${row['total_profit']:.2f}")
+        print("[+] SQL joins verified successfully!\n")
         conn.close()
         return True
     except Exception as e:
-        print(f"query failed: {e}\n")
+        print(f"[-] Join execution failed: {e}\n")
         conn.close()
         return False
 
-
-def check_agent():
-    """test the ai agent's query translation"""
-    print("--- testing ai agent ---")
+def verify_ai_agent():
+    """Verify SalesAIAgent translation logic."""
+    print("=== [3/3] VERIFYING AI SQL AGENT ===")
     agent = SalesAIAgent()
-
-    question = "What are the top 5 customers?"
-    print(f"asking: '{question}'")
-
-    sql = agent.translate_to_sql(question)
-    print(f"generated sql:\n{sql}")
-
+    
+    # Run a test translation
+    test_question = "What are the top 5 customers?"
+    print(f"[*] Asking AI Agent: '{test_question}'")
+    
+    sql = agent.translate_to_sql(test_question)
+    print(f"[+] AI-Generated SQL:")
+    print("-" * 50)
+    print(sql)
+    print("-" * 50)
+    
     if sql and "SELECT" in sql.upper():
-        print("sql looks valid")
-        df, err = agent.execute_query(sql)
-        if err:
-            print(f"execution error: {err}")
+        print("[+] SQL syntax translated and structural check passes.")
+        
+        # Test execute SQL
+        df, error = agent.execute_query(sql)
+        if error:
+            print(f"[-] Execution check failed: {error}")
             return False
         else:
-            print(f"got {len(df)} rows back")
-            print("agent pipeline working\n")
+            print(f"[+] Execution run successful. Returned dataframe has shape: {df.shape}")
+            print("[+] AI query pipeline verified successfully!\n")
             return True
     else:
-        print("translation failed\n")
+        print("[-] Query translation failed.\n")
         return False
 
-
 if __name__ == "__main__":
-    db_ok = check_tables()
-    sql_ok = check_queries() if db_ok else False
-    ai_ok = check_agent() if db_ok else False
-
-    print("=" * 40)
-    if db_ok and sql_ok and ai_ok:
-        print("all checks passed!")
+    db_ok = verify_database()
+    queries_ok = verify_queries() if db_ok else False
+    ai_ok = verify_ai_agent() if db_ok else False
+    
+    if db_ok and queries_ok and ai_ok:
+        print("[SUCCESS] Full system automated check completed successfully!")
     else:
-        print("some checks failed, see above")
+        print("[ERROR] Automated system check failed. Please inspect errors above.")

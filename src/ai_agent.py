@@ -1,291 +1,233 @@
-"""
-ai_agent.py
-Handles the AI side - takes a user question, converts to SQL using Gemini,
-runs it, explains results. Falls back to smart pattern matching if no API key.
-"""
-
-import os, re
+import os
 import sqlite3
 import pandas as pd
 from dotenv import load_dotenv
+import google.generativeai as genai
 
-# load .env from project root
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(ROOT, ".env"))
+# Load environment variables
+load_dotenv()
 
-try:
-    import google.generativeai as genai
-except ImportError:
-    genai = None
+# Database Path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "data", "sales.db")
 
-DB_FILE = os.path.join(ROOT, "data", "sales.db")
+# Table schemas as context for the model
+DB_SCHEMA_CONTEXT = """
+Database Schema:
+1. customers (
+    customer_id VARCHAR(50) PRIMARY KEY,
+    customer_name VARCHAR(255),
+    segment VARCHAR(50)
+)
+2. products (
+    product_id VARCHAR(50) PRIMARY KEY,
+    product_name VARCHAR(255),
+    category VARCHAR(100),
+    sub_category VARCHAR(100)
+)
+3. locations (
+    location_id INTEGER PRIMARY KEY,
+    city VARCHAR(100),
+    state VARCHAR(100),
+    country VARCHAR(100),
+    postal_code VARCHAR(20),
+    market VARCHAR(50),
+    region VARCHAR(50)
+)
+4. orders (
+    order_id VARCHAR(50) PRIMARY KEY,
+    order_date DATE, -- format: 'YYYY-MM-DD' (e.g. '2014-03-15')
+    ship_date DATE, -- format: 'YYYY-MM-DD'
+    ship_mode VARCHAR(50),
+    customer_id VARCHAR(50) REFERENCES customers(customer_id),
+    location_id INTEGER REFERENCES locations(location_id),
+    shipping_cost REAL,
+    order_priority VARCHAR(20)
+)
+5. order_items (
+    order_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id VARCHAR(50) REFERENCES orders(order_id),
+    product_id VARCHAR(50) REFERENCES products(product_id),
+    sales REAL,
+    quantity INTEGER,
+    discount REAL,
+    profit REAL
+)
 
-SCHEMA_INFO = """
-Tables:
-customers(customer_id, customer_name, segment)
-products(product_id, product_name, category, sub_category)
-locations(location_id, city, state, country, postal_code, market, region)
-orders(order_id, order_date, ship_date, ship_mode, customer_id, location_id, shipping_cost, order_priority)
-order_items(order_item_id, order_id, product_id, sales, quantity, discount, profit)
+Join Logic:
+- Join customers to orders using `orders.customer_id = customers.customer_id`
+- Join locations to orders using `orders.location_id = locations.location_id`
+- Join orders to order_items using `order_items.order_id = orders.order_id`
+- Join products to order_items using `order_items.product_id = products.product_id`
 
-Joins:
-- orders.customer_id -> customers.customer_id
-- orders.location_id -> locations.location_id
-- order_items.order_id -> orders.order_id
-- order_items.product_id -> products.product_id
-
-Dates are strings in YYYY-MM-DD format.
-- filter month: SUBSTR(order_date, 6, 2) = '03'
-- filter year: SUBSTR(order_date, 1, 4) = '2014'
-- group monthly: SUBSTR(order_date, 1, 7)
+Date Querying Rules for SQLite:
+- To match a month (e.g., March): Use `SUBSTR(o.order_date, 6, 2) = '03'` or `o.order_date LIKE '%-03-%'`
+- To match a year (e.g., 2014): Use `SUBSTR(o.order_date, 1, 4) = '2014'` or `o.order_date LIKE '2014-%'`
+- To group by month: Use `SUBSTR(o.order_date, 1, 7)` to format as 'YYYY-MM'.
 """
-
-MONTH_MAP = {
-    'january': '01', 'february': '02', 'march': '03', 'april': '04',
-    'may': '05', 'june': '06', 'july': '07', 'august': '08',
-    'september': '09', 'october': '10', 'november': '11', 'december': '12',
-    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-    'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09',
-    'oct': '10', 'nov': '11', 'dec': '12'
-}
-
-
-def _extract_year(text):
-    """pull a 4-digit year from the question, if any"""
-    match = re.search(r'\b(20\d{2})\b', text)
-    return match.group(1) if match else None
-
-def _extract_month(text):
-    """pull a month name from the question, if any"""
-    for name, num in MONTH_MAP.items():
-        if name in text.lower():
-            return num
-    return None
-
-def _extract_limit(text):
-    """pull 'top N' from the question"""
-    match = re.search(r'top\s+(\d+)', text.lower())
-    return int(match.group(1)) if match else 5
-
 
 class SalesAIAgent:
     def __init__(self):
+        # Retrieve the API key from environment variables
         self.api_key = os.getenv("GEMINI_API_KEY")
-        if not self.api_key:
-            try:
-                import streamlit as st
-                self.api_key = st.secrets.get("GEMINI_API_KEY")
-            except Exception:
-                pass
         self.initialized = False
-
-        if genai and self.api_key and self.api_key.strip():
+        
+        if self.api_key and self.api_key.strip():
             try:
                 genai.configure(api_key=self.api_key)
                 self.initialized = True
-                print("gemini api connected")
+                print("[+] Gemini API client configured successfully.")
             except Exception as e:
-                print(f"couldn't set up gemini: {e}")
+                print(f"[-] Failed to configure Gemini API client: {e}")
         else:
-            print("no api key - demo mode")
+            print("[-] GEMINI_API_KEY not found in environment. AI queries will operate in simulation/mock mode.")
 
-    def _strip_markdown(self, raw):
-        """clean up gemini output - remove ```sql blocks etc"""
-        sql = raw.strip()
+    def _clean_sql_query(self, raw_sql):
+        """Remove markdown syntax wrapper (```sql ... ```) if returned by LLM."""
+        sql = raw_sql.strip()
+        # Remove code blocks if present
         if sql.startswith("```"):
             lines = sql.split("\n")
             if lines[0].strip().startswith("```"):
                 lines = lines[1:]
-            if lines and lines[-1].strip().startswith("```"):
+            if lines[-1].strip().startswith("```"):
                 lines = lines[:-1]
             sql = "\n".join(lines).strip()
+        # Remove any leading 'sql' keyword
         if sql.lower().startswith("sql"):
             sql = sql[3:].strip()
+        # Remove trailing semicolons
         if sql.endswith(";"):
             sql = sql[:-1].strip()
         return sql
 
     def translate_to_sql(self, question):
-        """convert question to SQL - uses gemini if available, otherwise smart fallback"""
+        """Generate SQL query from natural language question using Gemini API."""
         if not self.initialized:
-            return self._smart_fallback(question)
-
-        instructions = (
-            "You are a SQL expert. Write SQLite SQL to answer the user's question.\n"
-            f"{SCHEMA_INFO}\n"
+            return self._mock_sql_generator(question)
+            
+        system_instruction = (
+            "You are an expert SQL analyst. Write standard SQL (SQLite syntax) to answer the user's question.\n"
+            f"{DB_SCHEMA_CONTEXT}\n"
             "Rules:\n"
-            "- Output ONLY raw SQL, no markdown or explanation\n"
-            "- Use exact column/table names from schema\n"
-            "- Limit to 10 rows unless asked otherwise\n"
-            "- Use proper joins"
+            "1. Output ONLY the raw SQL query. Do not include markdown blocks, explanation, or code styling.\n"
+            "2. Ensure all column names and table names match the schema exactly.\n"
+            "3. Use appropriate joins, groupings, and filters.\n"
+            "4. Always format numeric fields (sales, profit) nicely in summaries, but use exact column names in calculations.\n"
+            "5. Limit long lists to 5-10 rows unless the user asks for more."
         )
-
+        
         try:
             model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash",
-                system_instruction=instructions
+                model_name="gemini-1.5-flash",
+                system_instruction=system_instruction
             )
-            resp = model.generate_content(f"Question: {question}")
-            return self._strip_markdown(resp.text)
+            response = model.generate_content(f"Question: {question}")
+            sql_query = self._clean_sql_query(response.text)
+            return sql_query
         except Exception as e:
-            print(f"gemini failed: {e}, using fallback")
-            return self._smart_fallback(question)
+            print(f"[-] Gemini API SQL generation failed: {e}. Falling back to simulation.")
+            return self._mock_sql_generator(question)
 
-    def execute_query(self, sql):
-        """run sql on the database"""
-        if not os.path.exists(DB_FILE):
-            return None, "database not found - run data_loader.py first"
+    def execute_query(self, sql_query):
+        """Execute the SQL query on SQLite and return a pandas DataFrame."""
+        if not os.path.exists(DB_PATH):
+            return None, "Error: Local SQLite database not found. Please run the data loader first."
+            
         try:
-            conn = sqlite3.connect(DB_FILE)
-            result = pd.read_sql_query(sql, conn)
+            conn = sqlite3.connect(DB_PATH)
+            df = pd.read_sql_query(sql_query, conn)
             conn.close()
-            return result, None
+            return df, None
         except Exception as e:
             return None, str(e)
 
-    def generate_explanation(self, question, sql, df):
-        """explain results using gemini or fallback"""
+    def generate_explanation(self, question, sql_query, result_df):
+        """Generate a natural language explanation of the query results using Gemini."""
         if not self.initialized:
-            return self._fallback_explanation(question, df)
+            return self._mock_explanation_generator(question, result_df)
+            
+        if result_df is None or result_df.empty:
+            return "No data was returned for this query. It's possible there are no matching records."
 
-        if df is None or df.empty:
-            return "No results for this query."
-
+        data_summary = result_df.to_string(index=False)
+        
         prompt = (
-            f"You're a business analyst. User asked: '{question}'\n"
-            f"SQL:\n```sql\n{sql}\n```\n"
-            f"Results:\n{df.to_string(index=False)}\n\n"
-            f"Give a short clear summary. Highlight key findings. Use bold and bullet points."
+            f"You are a professional business intelligence analyst.\n"
+            f"The user asked: '{question}'\n"
+            f"You ran this SQL query:\n```sql\n{sql_query}\n```\n"
+            f"And got this database output:\n{data_summary}\n\n"
+            f"Write a concise, professional summary explaining the result. Highlight key takeaways, "
+            f"compare values if necessary, and use formatted bold text, lists, or tables as appropriate."
         )
-
+        
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
-            resp = model.generate_content(prompt)
-            return resp.text.strip()
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(prompt)
+            return response.text.strip()
         except Exception as e:
-            print(f"explanation failed: {e}")
-            return self._fallback_explanation(question, df)
+            print(f"[-] Gemini API explanation failed: {e}. Returning default summary.")
+            return self._mock_explanation_generator(question, result_df)
 
-    def _smart_fallback(self, question):
-        """generate sql by parsing the question - handles years, months, limits"""
-        q = question.lower()
-        year = _extract_year(question)
-        month = _extract_month(question)
-        limit = _extract_limit(question)
-
-        # build optional date filters
-        date_filters = []
-        if year:
-            date_filters.append(f"SUBSTR(o.order_date, 1, 4) = '{year}'")
-        if month:
-            date_filters.append(f"SUBSTR(o.order_date, 6, 2) = '{month}'")
-
-        date_where = " AND ".join(date_filters)
-
-        # top customers
-        if any(kw in q for kw in ["top", "best", "highest"]) and "customer" in q:
-            where = f"WHERE {date_where}" if date_where else ""
+    def _mock_sql_generator(self, question):
+        """Fallback mock generator if Gemini API key is missing."""
+        q_lower = question.lower()
+        if "top 5 customers" in q_lower or "best customers" in q_lower:
             return (
-                f"SELECT c.customer_name, SUM(oi.sales) AS total_sales, SUM(oi.profit) AS total_profit\n"
-                f"FROM customers c\n"
-                f"JOIN orders o ON c.customer_id = o.customer_id\n"
-                f"JOIN order_items oi ON o.order_id = oi.order_id\n"
-                f"{where}\n"
-                f"GROUP BY c.customer_name\n"
-                f"ORDER BY total_sales DESC\n"
-                f"LIMIT {limit}"
+                "SELECT c.customer_name, SUM(oi.sales) AS total_sales, SUM(oi.profit) AS total_profit\n"
+                "FROM customers c\n"
+                "JOIN orders o ON c.customer_id = o.customer_id\n"
+                "JOIN order_items oi ON o.order_id = oi.order_id\n"
+                "GROUP BY c.customer_name\n"
+                "ORDER BY total_sales DESC\n"
+                "LIMIT 5"
             )
-
-        # sales in a specific month/year
-        elif "sales" in q and (month or year):
-            where_parts = []
-            if month:
-                where_parts.append(f"SUBSTR(o.order_date, 6, 2) = '{month}'")
-            if year:
-                where_parts.append(f"SUBSTR(o.order_date, 1, 4) = '{year}'")
-            where = "WHERE " + " AND ".join(where_parts)
+        elif "sales in march" in q_lower or "march sales" in q_lower:
             return (
-                f"SELECT SUBSTR(o.order_date, 1, 7) AS month, SUM(oi.sales) AS total_sales, SUM(oi.profit) AS total_profit\n"
-                f"FROM orders o\n"
-                f"JOIN order_items oi ON o.order_id = oi.order_id\n"
-                f"{where}\n"
-                f"GROUP BY month\n"
-                f"ORDER BY month"
+                "SELECT SUBSTR(o.order_date, 1, 7) AS sales_month, SUM(oi.sales) AS total_sales, SUM(oi.profit) AS total_profit\n"
+                "FROM orders o\n"
+                "JOIN order_items oi ON o.order_id = oi.order_id\n"
+                "WHERE SUBSTR(o.order_date, 6, 2) = '03'\n"
+                "GROUP BY sales_month"
             )
-
-        # best selling product
-        elif "product" in q or "selling" in q:
-            where = f"WHERE {date_where}" if date_where else ""
+        elif "best selling product" in q_lower or "top product" in q_lower:
             return (
-                f"SELECT p.product_name, SUM(oi.quantity) AS qty_sold, SUM(oi.sales) AS total_sales\n"
-                f"FROM products p\n"
-                f"JOIN order_items oi ON p.product_id = oi.product_id\n"
-                f"JOIN orders o ON oi.order_id = o.order_id\n"
-                f"{where}\n"
-                f"GROUP BY p.product_name\n"
-                f"ORDER BY qty_sold DESC\n"
-                f"LIMIT {limit}"
+                "SELECT p.product_name, SUM(oi.quantity) AS quantity_sold, SUM(oi.sales) AS total_sales\n"
+                "FROM products p\n"
+                "JOIN order_items oi ON p.product_id = oi.product_id\n"
+                "GROUP BY p.product_name\n"
+                "ORDER BY quantity_sold DESC\n"
+                "LIMIT 5"
             )
-
-        # profit by market/region
-        elif "profit" in q and ("market" in q or "region" in q):
-            where = f"WHERE {date_where}" if date_where else ""
-            return (
-                f"SELECT l.market, SUM(oi.sales) AS total_sales, SUM(oi.profit) AS total_profit\n"
-                f"FROM locations l\n"
-                f"JOIN orders o ON l.location_id = o.location_id\n"
-                f"JOIN order_items oi ON o.order_id = oi.order_id\n"
-                f"{where}\n"
-                f"GROUP BY l.market\n"
-                f"ORDER BY total_profit DESC"
-            )
-
-        # revenue/growth by year or month
-        elif "revenue" in q or "growth" in q:
-            if year:
-                return (
-                    f"SELECT SUBSTR(o.order_date, 1, 7) AS month, SUM(oi.sales) AS revenue, SUM(oi.profit) AS profit\n"
-                    f"FROM orders o\n"
-                    f"JOIN order_items oi ON o.order_id = oi.order_id\n"
-                    f"WHERE SUBSTR(o.order_date, 1, 4) = '{year}'\n"
-                    f"GROUP BY month\n"
-                    f"ORDER BY month"
-                )
-            else:
-                return (
-                    f"SELECT SUBSTR(o.order_date, 1, 4) AS year, SUM(oi.sales) AS revenue, SUM(oi.profit) AS profit\n"
-                    f"FROM orders o\n"
-                    f"JOIN order_items oi ON o.order_id = oi.order_id\n"
-                    f"GROUP BY year\n"
-                    f"ORDER BY year"
-                )
-
-        # generic fallback with date filters
         else:
-            where = f"WHERE {date_where}" if date_where else ""
+            # General fallback query
             return (
-                f"SELECT o.order_date, SUM(oi.sales) AS daily_sales, SUM(oi.profit) AS daily_profit\n"
-                f"FROM orders o\n"
-                f"JOIN order_items oi ON o.order_id = oi.order_id\n"
-                f"{where}\n"
-                f"GROUP BY o.order_date\n"
-                f"ORDER BY o.order_date DESC\n"
-                f"LIMIT 10"
+                "SELECT o.order_date, SUM(oi.sales) AS daily_sales, SUM(oi.profit) AS daily_profit\n"
+                "FROM orders o\n"
+                "JOIN order_items oi ON o.order_id = oi.order_id\n"
+                "GROUP BY o.order_date\n"
+                "ORDER BY o.order_date DESC\n"
+                "LIMIT 10"
             )
 
-    def _fallback_explanation(self, question, df):
-        """text summary when AI analysis isn't available"""
-        if df is None or df.empty:
-            return "No data returned."
-
-        cols = df.columns.tolist()
-        lines = [f"**Results for:** *\"{question}\"*\n"]
-        for _, row in df.iterrows():
-            parts = [f"**{c}**: {row[c]}" for c in cols]
-            lines.append("- " + ", ".join(parts))
-
-        if self.initialized:
-            lines.append(f"\n*AI analysis temporarily unavailable (rate limit). Results generated using built-in query engine.*")
-        else:
-            lines.append(f"\n*Add GEMINI_API_KEY to .env for AI-powered analysis.*")
-        return "\n".join(lines)
+    def _mock_explanation_generator(self, question, result_df):
+        """Fallback mock explanation generator if Gemini API key is missing."""
+        if result_df is None or result_df.empty:
+            return "No data was returned."
+            
+        columns = result_df.columns.tolist()
+        num_rows = len(result_df)
+        
+        summary = (
+            f"**Query Results Analysis (Simulated Mode)**\n\n"
+            f"Here are the top results answering your question: *\"{question}\"*\n\n"
+        )
+        
+        for idx, row in result_df.iterrows():
+            row_desc = " - " + ", ".join([f"**{col}**: {row[col]}" for col in columns])
+            summary += row_desc + "\n"
+            
+        summary += (
+            f"\n*Note: To enable active AI reflections and summaries, configure your `GEMINI_API_KEY` in the `.env` file.*"
+        )
+        return summary
