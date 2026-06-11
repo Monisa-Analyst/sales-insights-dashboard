@@ -168,7 +168,7 @@ def load_agent():
     # Load custom API key from session state if entered in UI
     user_key = st.session_state.get("anthropic_api_key", "")
     if user_key.strip():
-        return SalesAIAgent(api_key=user_key)
+        os.environ["ANTHROPIC_API_KEY"] = user_key
     return SalesAIAgent()
 
 agent = load_agent()

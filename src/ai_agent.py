@@ -67,9 +67,9 @@ Date Querying Rules for SQLite:
 """
 
 class SalesAIAgent:
-    def __init__(self, api_key=None):
-        # Retrieve the API key from parameter or environment variables
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+    def __init__(self):
+        # Retrieve the API key from environment variables
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.initialized = False
         
         if self.api_key and self.api_key.strip() and not self.api_key.startswith("YOUR_"):
