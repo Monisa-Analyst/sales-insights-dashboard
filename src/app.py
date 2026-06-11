@@ -165,11 +165,18 @@ def query_db(sql, params=()):
 
 
 def load_agent():
+    agent = SalesAIAgent()
     # Load custom API key from session state if entered in UI
     user_key = st.session_state.get("anthropic_api_key", "")
-    if user_key.strip():
-        os.environ["ANTHROPIC_API_KEY"] = user_key
-    return SalesAIAgent()
+    if user_key.strip() and not user_key.startswith("YOUR_"):
+        try:
+            import anthropic
+            agent.api_key = user_key
+            agent.client = anthropic.Anthropic(api_key=user_key)
+            agent.initialized = True
+        except Exception as e:
+            pass
+    return agent
 
 agent = load_agent()
 
