@@ -165,6 +165,10 @@ def query_db(sql, params=()):
 
 
 def load_agent():
+    # Load custom API key from session state if entered in UI
+    user_key = st.session_state.get("anthropic_api_key", "")
+    if user_key.strip():
+        return SalesAIAgent(api_key=user_key)
     return SalesAIAgent()
 
 agent = load_agent()
@@ -195,6 +199,22 @@ st.sidebar.markdown("---")
 alerts = get_pending_alerts()
 if alerts:
     st.sidebar.warning(f"⚠️ {len(alerts)} batch(es) need analyst review")
+
+# API key configuration input in sidebar
+st.sidebar.markdown("### 🔑 AI Configuration")
+if os.getenv("ANTHROPIC_API_KEY") and not os.getenv("ANTHROPIC_API_KEY").startswith("YOUR_"):
+    st.sidebar.success("✅ Connected via environment")
+else:
+    input_key = st.sidebar.text_input(
+        "Anthropic API Key",
+        type="password",
+        help="Paste your ANTHROPIC_API_KEY to enable full AI. It is held in session memory.",
+        value=st.session_state.get("anthropic_api_key", "")
+    )
+    if input_key != st.session_state.get("anthropic_api_key", ""):
+        st.session_state["anthropic_api_key"] = input_key
+        st.rerun()
+st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 🔗 Portfolio Links")
 st.sidebar.markdown("- 🐙 [GitHub Profile](https://github.com/Monisa-Analyst)")
