@@ -42,9 +42,9 @@ if not os.path.exists(DB):
             sys.path.append(ROOT)
             sys.path.append(os.path.join(ROOT, "src"))
             import data_loader
-            data_loader.setup_folders()
-            data_loader.grab_dataset()
-            data_loader.build_tables()
+            data_loader.ensure_directories()
+            data_loader.download_dataset()
+            data_loader.process_and_normalize()
             st.success("Database ready! Refreshing...")
             st.rerun()
         except Exception as e:
